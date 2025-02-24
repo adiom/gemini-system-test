@@ -3,31 +3,47 @@ import asyncio
 from telegram import Update
 from telegram.ext import Application, ContextTypes
 from bot import main, setup_webhook
+from http.server import BaseHTTPRequestHandler  # Импортируем BaseHTTPRequestHandler
+import json
 
 # Создаем экземпляр Application (вызываем main)
 app: Application = main()
-_setup_complete = False # Флаг, чтобы setup_webhook выполнился только один раз
+_setup_complete = False # Флаг для однократного вызова setup_webhook
 
-async def telegram_webhook_handler(req, res):
+
+class TelegramWebhookHandler(BaseHTTPRequestHandler):
     """Обработчик для Vercel Serverless Function."""
-    global _setup_complete
-    try:
-        # Устанавливаем вебхук при первом запуске (и при каждом деплое)
-        if not _setup_complete:
-          await setup_webhook(app)
-          _setup_complete = True
 
-        # Обрабатываем входящий запрос от Telegram
-        data = await req.json()  # Асинхронно читаем тело запроса
-        update = Update.de_json(data, app.bot)
-        await app.process_update(update)
+    def do_POST(self):
+        """Обрабатывает POST-запросы от Telegram."""
+        global _setup_complete
+        try:
+            # Устанавливаем вебхук при первом запуске (и при каждом деплое)
+            if not _setup_complete:
+                asyncio.run(setup_webhook(app)) # Используем asyncio.run, т.к. это синхронная функция
+                _setup_complete = True
 
-        return res.status(200).send("OK")  # Обязательно возвращаем 200 OK
+            # Обрабатываем входящий запрос от Telegram
+            content_length = int(self.headers['Content-Length'])
+            body = self.rfile.read(content_length)
+            data = json.loads(body.decode('utf-8'))  # Декодируем в UTF-8
+            update = Update.de_json(data, app.bot)
 
-    except Exception as e:
-        print(f"Error in webhook handler: {e}")  # Используйте print для логов в Vercel
-        return res.status(500).send("Internal Server Error")
+            # Запускаем обработку обновления в асинхронном цикле
+            asyncio.run(app.process_update(update))
 
-# Создаем асинхронную обертку для обработчика
-async def handler(req, res):
-  await telegram_webhook_handler(req, res)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK") # Обязательно возвращаем 200 OK
+
+        except Exception as e:
+            print(f"Error in webhook handler: {e}")  # Логируем ошибки
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(b"Internal Server Error")
+    def log_message(self, format, *args):
+        # Переопределяем, чтобы избежать лишнего вывода в логи.
+        return
+
+# Vercel entry point
+handler = TelegramWebhookHandler
