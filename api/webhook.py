@@ -34,13 +34,16 @@ async def setup():
     application.add_handler(CommandHandler("see", command_see))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+# [api/webhook.py](api/webhook.py)
 @app.route('/webhook', methods=['POST'])
 async def webhook():
     """Обработчик вебхуков от Telegram."""
-    if request.method == "POST":
-        update = Update.de_json(request.get_json(), application.bot)
-        await application.process_update(update)
-        return "ok"
+    # Проверяем, инициализировано ли приложение
+    if not getattr(application, '_is_initialized', False):
+        await application.initialize()        
+    update = Update.de_json(request.get_json(), application.bot)
+    await application.process_update(update)
+    return "ok"
 
 @app.route('/')
 def home():
