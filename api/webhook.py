@@ -15,17 +15,21 @@ app = Flask(__name__)
 
 # Конфигурация
 TELEGRAM_BOT_TOKEN = '7920110758:AAGKs04L-L77Io1mNzG5SxJHvTpKgXSNW7s'
-WEBHOOK_URL = 'https://your-vercel-app-url.vercel.app'  # Замените на ваш URL
+WEBHOOK_URL = 'https://gemini-system-test.vercel.app'  # Замените на ваш URL
 
 # Инициализация бота
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 # Регистрация обработчиков
 async def setup():
+    # Инициализация приложения
+    await application.initialize()
+    
     # Установка вебхука
     await application.bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
     
     # Регистрация обработчиков команд и сообщений
+    from telegram.ext import CommandHandler, MessageHandler, filters
     application.add_handler(CommandHandler("new", command_new))
     application.add_handler(CommandHandler("see", command_see))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
