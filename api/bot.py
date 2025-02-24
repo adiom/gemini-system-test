@@ -1,3 +1,5 @@
+from http.server import BaseHTTPRequestHandler
+import json
 import os
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -11,22 +13,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def hello(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(f"Hello, {update.effective_user.first_name}!")
 
-async def webhook(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Create an application instance
-    application = Application.builder().token(TOKEN).build()
+# Initialize bot application
+application = Application.builder().token(TOKEN).build()
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("hello", hello))
 
-    # Add handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("hello", hello))
+async def handle_update(request_body):
+    """Process incoming webhook update"""
+    try:
+        update = Update.de_json(json.loads(request_body), application.bot)
+        await application.process_update(update)
+        return {"statusCode": 200, "body": "OK"}
+    except Exception as e:
+        return {"statusCode": 500, "body": str(e)}
 
-    # Process the update
-    await application.process_update(update)
-
-    return "OK"
-
-# For local testing
-if __name__ == "__main__":
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("hello", hello))
-    application.run_polling()
+def handler(event, context):
+    """Vercel serverless function handler"""
+    if event.get('body'):
+        return handle_update(event['body'])
+    return {"statusCode": 200, "body": "OK"}
