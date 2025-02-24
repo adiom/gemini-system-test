@@ -13,6 +13,14 @@ from telegram.ext import (
     ConversationHandler,
 )
 import google.generativeai as genai
+import tempfile
+from dotenv import load_dotenv
+load_dotenv()
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not TELEGRAM_BOT_TOKEN or not GEMINI_API_KEY:   
+    raise ValueError("Не заданы переменные окружения TELEGRAM_BOT_TOKEN и/или GEMINI_API_KEY")
 
 
 # Инициализация Gemini API
@@ -27,7 +35,8 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Путь для сохранения чатов
-CHAT_LOGS_DIR = "chat_logs"
+CHAT_LOGS_DIR = tempfile.mkdtemp(dir='/tmp')
+
 os.makedirs(CHAT_LOGS_DIR, exist_ok=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
