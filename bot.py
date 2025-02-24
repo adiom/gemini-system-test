@@ -10,15 +10,13 @@ from telegram.ext import (
     filters,
     ContextTypes,
     ConversationHandler,
-    Application
+    Application  # Application нужен для type hinting
 )
 import google.generativeai as genai
-from dotenv import load_dotenv  # Добавляем dotenv
-import tempfile
-
+from dotenv import load_dotenv
+import tempfile  # Добавлено
 
 # Загружаем переменные окружения из .env файла (если он есть)
-# Если файла нет, переменные будут браться из окружения Vercel
 load_dotenv()
 
 # Настройки (берем из переменных окружения)
@@ -40,10 +38,9 @@ SELECTING_ACTION, NEW_CHAT, CHATTING = range(3)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Путь для сохранения чатов
-#CHAT_LOGS_DIR = "chat_logs"
-CHAT_LOGS_DIR = tempfile.mkdtemp(dir='/tmp') # Создаем временную папку в /tmp
-os.makedirs(CHAT_LOGS_DIR, exist_ok=True)
+# Временная папка для логов
+CHAT_LOGS_DIR = tempfile.mkdtemp(dir='/tmp')
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Стартовое сообщение со списком команд."""
@@ -56,10 +53,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return SELECTING_ACTION
 
+
 async def command_see(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /see."""
     logger.info(f"User {update.effective_user.id} used /see command")
     return await view_context(update, context)
+
 
 async def command_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /new."""
@@ -82,6 +81,7 @@ async def command_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Введите system prompt для нового чата (описание роли и задач бота):")
     return NEW_CHAT
 
+
 async def select_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка выбора действия."""
     user_choice = update.message.text
@@ -93,8 +93,8 @@ async def select_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введите system prompt для нового чата (описание роли и задач бота):")
         return NEW_CHAT
     elif user_choice == "Посмотреть контекст":
-        await view_context(update, context) # Вызываем view_context напрямую
-        reply_keyboard = [["Посмотреть контекст", "Создать новый чат"]] # Предлагаем выбор действий снова
+        await view_context(update, context)  # Вызываем view_context напрямую
+        reply_keyboard = [["Посмотреть контекст", "Создать новый чат"]]  # Предлагаем выбор действий снова
         await update.message.reply_text(
             "Выберите следующее действие:",
             reply_markup=ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True),
@@ -108,10 +108,12 @@ async def select_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return SELECTING_ACTION
 
+
 async def new_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Создание нового чата с system prompt."""
     chat_id = update.effective_chat.id
-    account_name = update.effective_user.username or str(update.effective_user.id)  # Имя пользователя Telegram или ID
+    account_name = update.effective_user.username or str(
+        update.effective_user.id)  # Имя пользователя Telegram или ID
     system_prompt = update.message.text
     logger.info(f"User {update.effective_user.id} set system prompt: {system_prompt}")
 
@@ -126,7 +128,8 @@ async def new_chat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Сохраняем путь к файлу в контексте пользователя и устанавливаем состояние CHATTING
     context.user_data['chat_log_file'] = chat_log_file
     await update.message.reply_text("Новый чат создан! Теперь вы можете отправлять сообщения.")
-    return CHATTING # Переходим в состояние CHATTING, чтобы обрабатывать сообщения
+    return CHATTING  # Переходим в состояние CHATTING, чтобы обрабатывать сообщения
+
 
 async def transcribe_audio_gemini_api(audio_file: File) -> str or None:
     """Транскрибирует аудиофайл, используя Gemini API."""
@@ -137,10 +140,10 @@ async def transcribe_audio_gemini_api(audio_file: File) -> str or None:
         # Попытка отправить аудио данные в Gemini как бинарные данные
         contents = [{
             "parts": [{"text": "Преобразуй это аудио в текст:"},
-                      {"mime_type": "audio/ogg", "data": audio_data}] # mime_type - нужно уточнить, может быть 'audio/ogg', 'audio/mpeg', 'audio/mp4' и т.д.
+                      {"mime_type": "audio/ogg", "data": audio_data}]  # mime_type - нужно уточнить
         }]
 
-        response = model_flash.generate_content(contents=contents) # Отправляем запрос с аудио данными
+        response = model_flash.generate_content(contents=contents)  # Отправляем запрос с аудио данными
 
         if response.text:
             transcribed_text = response.text
@@ -161,8 +164,9 @@ async def split_and_send_message(update: Update, text: str, max_length: int = 40
         chunk = text[i:i + max_length]
         await update.message.reply_text(chunk)
 
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка текстовых, аудио и фото сообщений с учетом контекста."""
+    """Обработка сообщений с учетом контекста."""
     chat_id = update.effective_chat.id
     chat_log_file = context.user_data.get('chat_log_file')
 
@@ -171,42 +175,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return SELECTING_ACTION
 
     user_input = None
-    message_type = "текст"  # По умолчанию считаем текст, если не определим другое
+    message_type = "текст"
 
     if update.message.text:
         user_input = update.message.text
         message_type = "текст"
-    elif update.message.voice:  # Обработка голосовых сообщений
-        message_type = "голосовое сообщение"
-        await update.message.reply_text("Обрабатываю голосовое сообщение...")
-        voice_file = await update.message.voice.get_file()
-        transcribed_text = await transcribe_audio_gemini_api(voice_file)
-        if transcribed_text:
-            user_input = transcribed_text
-            message_type = "голосовое (текст)"
-        else:
-            await update.message.reply_text("Не удалось распознать голосовое сообщение через Gemini. Пожалуйста, попробуйте текстовый ввод.")
-            return CHATTING
-    elif update.message.audio:  # Обработка аудиофайлов
-        message_type = "аудио файл"
-        await update.message.reply_text("Обрабатываю аудиофайл...")
-        audio_file = await update.message.audio.get_file()
-        transcribed_text = await transcribe_audio_gemini_api(audio_file)
-        if transcribed_text:
-            user_input = transcribed_text
-            message_type = "аудио (текст)"
-        else:
-            await update.message.reply_text("Не удалось распознать аудиофайл через Gemini. Пожалуйста, попробуйте текстовый ввод.")
-            return CHATTING
+    # Временно отключаем обработку аудио
+    elif update.message.voice:
+      message_type = "голосовое сообщение"
+      await update.message.reply_text("Извините, обработка голосовых сообщений временно отключена.")
+      return CHATTING
+    elif update.message.audio:
+      message_type = "аудио файл"
+      await update.message.reply_text("Извините, обработка аудиофайлов временно отключена.")
+      return CHATTING
     elif update.message.photo:
-        user_input = "Фотография" # Или можно обрабатывать фото как-то иначе, если нужно
+        user_input = "Фотография"  # Обработка фото
         message_type = "фото"
     else:
         await update.message.reply_text("Поддерживаются только текст, аудио и фото.")
         return CHATTING
 
-    if user_input is None: # Если не удалось получить user_input (например, из-за ошибки транскрипции аудио)
-        return CHATTING # Не обрабатываем запрос Gemini и ждем следующее сообщение
+    if user_input is None:  # Если не удалось получить user_input
+        return CHATTING
 
     logger.info(f"User {update.effective_user.id} sent message ({message_type}): {user_input}")
 
@@ -214,32 +205,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     with open(chat_log_file, "a", encoding="utf-8") as f:
         f.write(f"User ({message_type}): {user_input}\n")
 
-    # **Загружаем историю чата и формируем контекст для Gemini**
+    # Загружаем историю чата
     with open(chat_log_file, "r", encoding="utf-8") as f:
         chat_history = f.read()
 
-    # Формируем prompt для Gemini, включая историю и новое сообщение пользователя
     prompt_for_gemini = chat_history + f"\nUser ({message_type}): {user_input}\nBot: "
 
-    # Отправляем запрос в Gemini 2.0 Flash с контекстом
     try:
         logger.info(f"Sending request to Gemini API with context for user {update.effective_user.id}")
-        response = model_flash.generate_content(prompt_for_gemini)  # Отправляем prompt с историей
+        response = model_flash.generate_content(prompt_for_gemini)
         logger.info(f"Gemini API response received for user {update.effective_user.id}")
         bot_reply = response.text
 
-        # Логируем ответ бота
         with open(chat_log_file, "a", encoding="utf-8") as f:
             f.write(f"Bot: {bot_reply}\n")
 
-        # Отправляем ответ по частям, если он длинный
         await split_and_send_message(update, bot_reply)
 
     except Exception as e:
-        logger.error(f"Ошибка при обращении к Gemini API с контекстом для пользователя {update.effective_user.id}: {e}")
-        await update.message.reply_text(f"Извините, произошла ошибка при обращении к Gemini API с контекстом: {e}")
+        logger.error(f"Ошибка при обращении к Gemini API: {e}")
+        await update.message.reply_text(f"Извините, произошла ошибка: {e}")
 
     return CHATTING
+
 
 async def view_context(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Показывает контекст текущего чата."""
@@ -248,25 +236,23 @@ async def view_context(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not chat_log_file or not os.path.exists(chat_log_file):
         await update.message.reply_text("Контекст пуст или чат не создан. Сначала создайте новый чат.")
-        return SELECTING_ACTION # Возвращаемся в меню выбора действий, если нет контекста
+        return SELECTING_ACTION  # Возвращаемся в меню
 
     with open(chat_log_file, "r", encoding="utf-8") as f:
         context_text = f.read()
 
-    # Запрос к Gemini для краткого описания контекста
     try:
-        response = model_flash.generate_content(f"Кратко опиши тему текущего диалога, основываясь на следующем контексте:\n\n{context_text}")
+        response = model_flash.generate_content(
+            f"Кратко опиши тему текущего диалога, основываясь на следующем контексте:\n\n{context_text}")
         context_summary = response.text
     except Exception as e:
         logger.error(f"Ошибка при запросе summary контекста к Gemini API: {e}")
         context_summary = "Не удалось получить описание контекста."
 
-    # Формируем полное сообщение
     full_message = f"Краткое описание контекста чата:\n\n{context_summary}\n\nПолный контекст:\n\n{context_text}"
-
-    # Отправляем сообщение по частям
     await split_and_send_message(update, full_message)
-    return SELECTING_ACTION # Возвращаемся в меню выбора действий после просмотра контекста
+    return SELECTING_ACTION
+
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена текущего действия."""
@@ -275,44 +261,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return SELECTING_ACTION
 
 
-async def setup_webhook(app: Application):
+async def setup_webhook(app: Application):  # Аннотация типов
     """Настройка webhook."""
-    # Замените на URL вашего Vercel приложения (с /api/telegram в конце!)
     WEBHOOK_URL = f"{os.getenv('VERCEL_URL')}/api/telegram"  # Используем переменную VERCEL_URL
     await app.bot.set_webhook(url=WEBHOOK_URL)
     logger.info(f"Webhook set to: {WEBHOOK_URL}")
-
-def main():
-    """Основная функция (теперь без run_polling)."""
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    logger.info("Bot application created")
-
-    # --- ConversationHandler (без изменений) ---
-    conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("start", start),
-            CommandHandler("new", command_new),
-            CommandHandler("see", command_see),
-        ],
-        states={
-            SELECTING_ACTION: [
-                CommandHandler("new", command_new),
-                CommandHandler("see", command_see),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message),
-            ],
-            NEW_CHAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, new_chat)],
-            CHATTING: [
-                CommandHandler("new", command_new),
-                CommandHandler("see", command_see),
-                MessageHandler(
-                    (filters.TEXT | filters.AUDIO | filters.PHOTO | filters.VOICE) & ~filters.COMMAND,
-                    handle_message,
-                ),
-            ],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
-
-    application.add_handler(conv_handler)
-
-    return application

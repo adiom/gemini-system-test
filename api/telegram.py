@@ -1,49 +1,108 @@
 # api/telegram.py
 import asyncio
-from telegram import Update
-from telegram.ext import Application, ContextTypes
-from bot import main, setup_webhook
-from http.server import BaseHTTPRequestHandler  # Импортируем BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler
 import json
+from telegram import Update
+from telegram.ext import Application, ContextTypes, CommandHandler, MessageHandler, filters, ConversationHandler
+from bot import setup_webhook, TELEGRAM_BOT_TOKEN  # Импортируем только setup_webhook и токен
 
-# Создаем экземпляр Application (вызываем main)
-app: Application = main()
-_setup_complete = False # Флаг для однократного вызова setup_webhook
+# Глобальная переменная для Application
+app: Application = None
+_setup_complete = False
 
-
-class TelegramWebhookHandler(BaseHTTPRequestHandler):
-    """Обработчик для Vercel Serverless Function."""
+class HttpRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
-        """Обрабатывает POST-запросы от Telegram."""
-        global _setup_complete
-        try:
-            # Устанавливаем вебхук при первом запуске (и при каждом деплое)
-            if not _setup_complete:
-                asyncio.run(setup_webhook(app)) # Используем asyncio.run, т.к. это синхронная функция
-                _setup_complete = True
+        global app, _setup_complete
 
-            # Обрабатываем входящий запрос от Telegram
-            content_length = int(self.headers['Content-Length'])
-            body = self.rfile.read(content_length)
-            data = json.loads(body.decode('utf-8'))  # Декодируем в UTF-8
-            update = Update.de_json(data, app.bot)
+        async def handle_post():
+            global _setup_complete
+            nonlocal self
+            try:
+                if app is None: # Создаем Application только при первом запросе
+                    #Используем builder.build() и initialize/shutdown
+                    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+                    await app.initialize()
+                    # --- ConversationHandler ---
+                    conv_handler = ConversationHandler(
+                        entry_points=[
+                            CommandHandler("start", self.start),
+                            CommandHandler("new", self.command_new),
+                            CommandHandler("see", self.command_see),
+                        ],
+                        states={
+                            SELECTING_ACTION: [
+                                CommandHandler("new", self.command_new),
+                                CommandHandler("see", self.command_see),
+                                MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message),
+                            ],
+                            NEW_CHAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.new_chat)],
+                            CHATTING: [
+                                CommandHandler("new", self.command_new),
+                                CommandHandler("see", self.command_see),
+                                MessageHandler(
+                                    (filters.TEXT | filters.AUDIO | filters.PHOTO | filters.VOICE) & ~filters.COMMAND,
+                                    self.handle_message,
+                                ),
+                            ],
+                        },
+                        fallbacks=[CommandHandler("cancel", self.cancel)],
+                    )
 
-            # Запускаем обработку обновления в асинхронном цикле
-            asyncio.run(app.process_update(update))
+                    app.add_handler(conv_handler)
 
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"OK") # Обязательно возвращаем 200 OK
 
-        except Exception as e:
-            print(f"Error in webhook handler: {e}")  # Логируем ошибки
-            self.send_response(500)
-            self.end_headers()
-            self.wfile.write(b"Internal Server Error")
+                if not _setup_complete:
+                    await setup_webhook(app)
+                    _setup_complete = True
+
+                content_length = int(self.headers['Content-Length'])
+                post_data = self.rfile.read(content_length)
+                data = json.loads(post_data.decode('utf-8'))
+                update = Update.de_json(data, app.bot)
+                await app.process_update(update)
+                self.send_response(200)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b'OK')
+
+            except Exception as e:
+                print(f"Error in webhook handler: {e}")
+                self.send_response(500)
+                self.send_header('Content-type', 'text/plain')
+                self.end_headers()
+                self.wfile.write(b'Internal Server Error')
+
+        asyncio.run(handle_post())
+
     def log_message(self, format, *args):
         # Переопределяем, чтобы избежать лишнего вывода в логи.
         return
 
-# Vercel entry point
-handler = TelegramWebhookHandler
+    #----- Методы бота, адаптированные для использования внутри класса ------
+    # Все методы, используемые в ConversationHandler, должны быть методами класса
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+      from bot import start
+      await start(update, context)
+
+    async def command_new(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+      from bot import command_new
+      await command_new(update,context)
+
+    async def command_see(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        from bot import command_see
+        await command_see(update, context)
+
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        from bot import handle_message
+        await handle_message(update, context)
+
+    async def new_chat(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        from bot import new_chat
+        await new_chat(update, context)
+
+    async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        from bot import cancel
+        await cancel(update, context)
+
+handler = HttpRequestHandler
