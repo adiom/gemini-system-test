@@ -14,6 +14,8 @@ from telegram.ext import (
 )
 import google.generativeai as genai
 from dotenv import load_dotenv  # Добавляем dotenv
+import tempfile
+
 
 # Загружаем переменные окружения из .env файла (если он есть)
 # Если файла нет, переменные будут браться из окружения Vercel
@@ -39,7 +41,8 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 
 # Путь для сохранения чатов
-CHAT_LOGS_DIR = "chat_logs"
+#CHAT_LOGS_DIR = "chat_logs"
+CHAT_LOGS_DIR = tempfile.mkdtemp(dir='/tmp') # Создаем временную папку в /tmp
 os.makedirs(CHAT_LOGS_DIR, exist_ok=True)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
