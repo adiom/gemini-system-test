@@ -23,12 +23,15 @@ from bot import (
 
 logger = logging.getLogger(__name__)
 
-async def telegram_webhook(request):
+async def handler(event, context):  # event - это весь HTTP-запрос
     """Handles incoming requests from the Telegram webhook."""
+
+    # Инициализируем приложение Telegram
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     await app.initialize()
-    # Conversation handler setup (moved here for clarity)
-    CHAT = 1 # Only need 1 "state"
+
+    # Обработчик диалогов
+    CHAT = 1
     conv_handler = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
@@ -43,26 +46,36 @@ async def telegram_webhook(request):
               MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
           ]
         },
-        fallbacks=[],  # No need for a cancel command, /new handles ending a chat
+        fallbacks=[],
     )
     app.add_handler(conv_handler)
 
-    # Webhook setup (only do this once)
-    if not app.updater:  # Check if updater exists (first run)
+    # Настройка вебхука (только при первом запуске)
+    if not app.updater:
         await setup_webhook(app)
-        app.updater = True  # Dummy updater to mark as initialized
-
+        app.updater = True  # Флаг, что вебхук настроен
 
     try:
-        data = json.loads(request)
+        # Разбираем тело запроса (оно в event['body'])
+        data = json.loads(event['body'])
         update = Update.de_json(data, app.bot)
         await app.process_update(update)
-        return "OK"  # Return a simple 200 OK response
+
+        # Возвращаем стандартный ответ для serverless-функций
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Content-Type': 'text/plain'
+            },
+            'body': 'OK'
+        }
+
     except Exception as e:
         print(f"Error in webhook handler: {e}")
-        return "Internal Server Error", 500
-
-
-async def handler(event, context):
-    """AWS Lambda handler function (adapted for Vercel)."""
-    return await telegram_webhook(event['body'])
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Content-Type': 'text/plain'
+            },
+            'body': 'Internal Server Error'
+        }
