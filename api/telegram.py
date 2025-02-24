@@ -14,9 +14,11 @@ class HttpRequestHandler(BaseHTTPRequestHandler):
         self._setup_complete = False
 
     def do_POST(self):
+        if not hasattr(self, "app"):
+            self.app = None
+            self._setup_complete = False        
 
         async def handle_post():
-            nonlocal self
             try:
                 if self.app is None:
                     self.app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
